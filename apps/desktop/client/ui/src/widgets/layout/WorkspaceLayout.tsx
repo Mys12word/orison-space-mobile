@@ -21,6 +21,7 @@ const SearchPanel = lazy(() => import('../../features/search-panel/SearchPanel')
 const TimelinePanel = lazy(() => import('../../features/timeline/TimelinePanel').then((m) => ({ default: m.TimelinePanel })));
 const OverviewPage = lazy(() => import('../../features/overview/OverviewPage').then((m) => ({ default: m.OverviewPage })));
 const OutlineEditor = lazy(() => import('../../features/editor/OutlineEditor').then((m) => ({ default: m.OutlineEditor })));
+const WritingStart = lazy(() => import('../../features/editor/WritingStart').then((m) => ({ default: m.WritingStart })));
 const ImageGenEditor = lazy(() => import('../../features/editor/ImageGenEditor').then((m) => ({ default: m.ImageGenEditor })));
 const AssetsPanel = lazy(() => import('../../features/assets/AssetsPanel').then((m) => ({ default: m.AssetsPanel })));
 const FileTabBar = lazy(() => import('../../features/editor/FileTabBar').then((m) => ({ default: m.FileTabBar })));
@@ -105,6 +106,7 @@ function DesktopWorkspaceLayout() {
       case 'novel':
       case 'script':
         return <div className="workspace-content workspace-content--flush"><OverviewPage /></div>;
+      case 'write': return <div className="workspace-content workspace-content--flush"><WritingStart /></div>;
       case 'image_gen': return <div className="workspace-panel-content"><ImageGenEditor /></div>;
       case 'assets': return <div className="workspace-panel-content"><AssetsPanel /></div>;
       default: return <div className="workspace-panel-content"><OverviewPage /></div>;

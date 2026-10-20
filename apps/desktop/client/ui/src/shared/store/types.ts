@@ -3,7 +3,7 @@ import type { taskRequestSchema, taskResultSchema, patchOperationSchema } from '
 
 export type WorkspaceModule = 'outline' | 'novel' | 'script';
 export type WorkspacePanel = 'overview' | 'image_gen' | 'assets';
-export type ActivePage = 'overview' | 'outline' | 'novel' | 'script' | 'image_gen' | 'assets';
+export type ActivePage = 'overview' | 'outline' | 'novel' | 'script' | 'write' | 'image_gen' | 'assets';
 export type SidebarPanel = 'explorer' | 'search' | 'timeline';
 export type BottomPanelTab = 'output' | 'tasks';
 export type ThemeSetting = 'system' | 'light' | 'dark' | (string & {});

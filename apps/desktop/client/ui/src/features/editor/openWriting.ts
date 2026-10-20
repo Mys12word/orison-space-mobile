@@ -19,7 +19,8 @@ export async function openWriting(chapter?: NovelChapterMeta): Promise<void> {
   const target = chapter ?? recent[0];
   const contentFile = target?.sections?.[0]?.contentFile;
   if (!projectPath || !target || !contentFile) {
-    state.setActivePage('outline');
+    // Nothing to open yet: land on the create-first-chapter surface.
+    state.setActivePage('write');
     return;
   }
   const filePath = `${normalizePath(projectPath)}/${contentFile}`;
@@ -28,6 +29,6 @@ export async function openWriting(chapter?: NovelChapterMeta): Promise<void> {
     const content = await window.orisonDesktop?.readFile(filePath);
     state.openFile(filePath, name, content ?? '');
   } catch {
-    state.setActivePage('outline');
+    state.setActivePage('write');
   }
 }

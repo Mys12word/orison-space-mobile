@@ -363,3 +363,56 @@
   background: var(--surface-container-highest);
   animation: skeleton-pulse 1.5s ease-in-out infinite;
 }
+
+/* ── Writing start (project without chapters) ── */
+.writing-start {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-md);
+  height: 100%;
+  padding: var(--space-2xl);
+  text-align: center;
+  color: var(--on-surface);
+}
+
+.writing-start-icon {
+  font-size: 44px;
+  color: var(--accent);
+  opacity: 0.9;
+}
+
+.writing-start-title {
+  margin: 0;
+  font-size: var(--text-xl);
+  font-weight: 600;
+}
+
+.writing-start-hint {
+  margin: 0;
+  max-width: 34ch;
+  color: var(--on-surface-variant);
+  font-size: var(--text-sm);
+  line-height: 1.6;
+}
+
+.writing-start-create {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-xs);
+  margin-top: var(--space-sm);
+  padding: 10px 20px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--on-accent, #fff);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform var(--duration-fast), opacity var(--duration-fast);
+}
+
+.writing-start-create:hover { transform: translateY(-1px); }
+.writing-start-create:active { transform: scale(0.97); }
+.writing-start-create:disabled { opacity: 0.6; cursor: default; transform: none; }

@@ -1,6 +1,6 @@
 {
   "name": "@orison/mobile",
-  "version": "0.3.0-mobile.13",
+  "version": "0.3.0-mobile.16",
   "private": true,
   "description": "Orison Space 手机版 — Android 上以本地 Node 服务 + 浏览器/PWA 方式运行同一套创作 IDE",
   "type": "module",

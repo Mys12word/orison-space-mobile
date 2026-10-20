@@ -3,6 +3,17 @@
 本项目所有重要变更都会记录在此文件中。
 
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
+# 0.3.0-mobile.16
+
+- Agent 的系统提示新增「Saving chapters」：写/续写章节必须调用 chapter_write 把正文落盘到 chapters/<id>.md，先 chapter_list 复用已有 id；只给走向/大纲时要在回复里说明「尚未保存」。
+
+# 0.3.0-mobile.15
+
+- 写作页在项目还没有章节时不再静默退回大纲：新增起始页与「新建第一章」按钮，点了会创建 chapters/ch-001.md、自动登记章节并打开编辑器；openWriting 的兜底也改为进入该页面。
+
+# 0.3.0-mobile.14
+
+- 模型请求改为流式（streamText）：非流式请求会一直静默到整段生成完，长上下文很容易触发 Cloudflare 的 100 秒源站超时（HTTP 524）。流式边生成边回传可绕开；中转不支持 stream（400）时自动回退为非流式。
 # 0.3.0-mobile.13
 
 - Agent 报错现在能看到真实原因。此前只显示「Failed after 3 attempts. Last error:」，因为 AI SDK 的重试封装把底层错误吞掉了；现在会在消息里带上 HTTP 状态码、网络错误码（ECONNRESET / ENOTFOUND / TLS 证书类）、对端响应体前 200 字，并按类型给出提示（例如代理/VPN 相关）。

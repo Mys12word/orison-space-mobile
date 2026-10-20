@@ -1,0 +1,7 @@
+writing:
+  emptyTitle: "还没有章节"
+  emptyHint: "先建一章就能开始写。也可以让 Agent 用 chapter_write 直接把正文写进 chapters/。"
+  createFirst: "新建第一章"
+  createNext: "新建下一章"
+  creating: "创建中…"
+  createFailed: "新建章节失败：{reason}"

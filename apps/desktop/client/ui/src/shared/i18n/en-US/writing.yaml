@@ -1,0 +1,7 @@
+writing:
+  emptyTitle: "No chapters yet"
+  emptyHint: "Create a chapter to start writing. You can also let the agent write one into chapters/ via chapter_write."
+  createFirst: "Create first chapter"
+  createNext: "Create next chapter"
+  creating: "Creating…"
+  createFailed: "Couldn't create the chapter: {reason}"
