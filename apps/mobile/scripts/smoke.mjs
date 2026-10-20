@@ -86,6 +86,14 @@ check('git:create-node/log', Array.isArray(log) && log.length > 0 && !!nodeCommi
 const status = await rpc('git:status-count', [projectDir]);
 check('git:status-count', typeof status === 'number', String(status));
 
+// 未初始化 git 的项目点「保存版本」应当自动建仓，而不是报 Could not find git root
+const snapName = `快照测试-${Date.now().toString(36)}`;
+const snapDir = await rpc('project:create-directory', ['', snapName]);
+await rpc('project:save-meta', [snapDir, { name: snapName, type: 'novel', projectId: 'snapshot-test' }]);
+const snapCommit = await rpc('git:create-node', [snapDir, 'snapshot: 首次保存']);
+const snapRepo = await rpc('git:is-repo', [snapDir]);
+check('git:create-node auto-init (无仓库直接快照)', !!snapCommit?.oid && snapRepo === true, `oid=${snapCommit?.oid?.slice(0, 7)} isRepo=${snapRepo}`);
+
 // Event bus: the renderer subscribes to tool:event / agent:stream-event. Assert
 // the websocket handshake + hello frame works.
 const events = await new Promise((resolve) => {

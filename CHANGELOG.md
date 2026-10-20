@@ -5,6 +5,10 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 # 0.3.0-mobile.11
 
+- 修复「保存版本」报 `Could not find git root for /`：新建项目只建目录、不会初始化 git 仓库，
+  而快照直接去 findRoot。现在 `git:create-node` 会先确保仓库存在（缺 `.git` 就 `git.init`），
+  首次快照本身就成为时间线的起点，概览里的「无版本历史」提示也随之消失。
+  （消息里的 `/` 是 isomorphic-git 向上走到根的路径，不是项目路径，容易误判。）
 - 修复界面显示原始 i18n key 的问题：补上 topbar.saveFailed、findReplace.toggleReplace 等缺失文案，
   并把封面保存失败的 key 从 creative.* 改到实际存在的 overview.*。
 - 模型刷新提示现在正确显示「已刷新 N 个模型」。

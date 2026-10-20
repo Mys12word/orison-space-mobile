@@ -129,6 +129,13 @@ function notifyGitChanged() {
  * currently on disk, and lays down a first node so the timeline has a starting
  * point. Idempotent: if the folder is already a repo, returns without error.
  */
+/** Create .git if the folder isn't a repo yet (no commit — callers stage their own). */
+async function ensureRepo(dir: string): Promise<boolean> {
+  if (await isGitRepo(dir)) return false;
+  await git.init({ fs, dir, defaultBranch: 'main' });
+  return true;
+}
+
 async function initRepo(dir: string): Promise<{ initialized: boolean }> {
   if (await isGitRepo(dir)) {
     return { initialized: false };
@@ -151,6 +158,10 @@ async function initRepo(dir: string): Promise<{ initialized: boolean }> {
 }
 
 async function createNode(dir: string, message: string, tag?: string): Promise<{ oid: string }> {
+  // Snapshotting a project that was never initialized must not fail with
+  // "Could not find git root for /" — create the repo on the spot so the first
+  // snapshot doubles as the starting point of the timeline.
+  await ensureRepo(dir);
   const root = await getGitRoot(dir);
   const matrix = await git.statusMatrix({ fs, dir: root });
   for (const [filepath, , workdir] of matrix) {
