@@ -1,5 +1,9 @@
 agent:
   retract: "Undo last message"
+  close: "Close"
+  outlineTitle: "Message outline"
+  outlineEmpty: "You haven't sent anything yet."
+  jumpToLatest: "Jump to latest"
   title: "Agent"
   newConversation: "New conversation"
   history: "History"

@@ -1,5 +1,9 @@
 agent:
   retract: "撤回上一条"
+  close: "关闭"
+  outlineTitle: "对话总览"
+  outlineEmpty: "你还没有发送过消息。"
+  jumpToLatest: "跳到最新"
   title: "Agent"
   newConversation: "新建对话"
   history: "历史记录"

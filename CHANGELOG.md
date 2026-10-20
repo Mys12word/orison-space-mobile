@@ -3,6 +3,16 @@
 本项目所有重要变更都会记录在此文件中。
 
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
+# 0.3.0-mobile.13
+
+- Agent 报错现在能看到真实原因。此前只显示「Failed after 3 attempts. Last error:」，因为 AI SDK 的重试封装把底层错误吞掉了；现在会在消息里带上 HTTP 状态码、网络错误码（ECONNRESET / ENOTFOUND / TLS 证书类）、对端响应体前 200 字，并按类型给出提示（例如代理/VPN 相关）。
+
+# 0.3.0-mobile.12
+
+- Agent 面板新增「对话总览」：右上角目录按钮打开你发送过的消息列表（按顺序编号、两行摘要），点任意一条平滑滚动到对应消息。
+- Agent 面板新增「跳到最新」悬浮按钮：向上翻阅历史时会出现在右下角，一键回到底部并跟随新消息。
+- 这两项在手机全屏 Agent 和桌面侧栏都可用。
+
 # 0.3.0-mobile.11
 
 - 修复「保存版本」报 `Could not find git root for /`：新建项目只建目录、不会初始化 git 仓库，
