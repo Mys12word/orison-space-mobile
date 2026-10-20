@@ -1,0 +1,44 @@
+# ── Dependencies ──
+node_modules/
+.pnpm-store/
+package-lock.json
+apps/**/package-lock.json
+
+# ── Build output / artifacts ──
+dist/
+out/
+.vite/
+.turbo/
+temp/
+release/
+portable/
+*.tsbuildinfo
+
+# ── Test / coverage ──
+coverage/
+playwright-report/
+test-results/
+
+# ── Secrets / env ──
+.env
+.env.local
+.env.agent.local
+*.pem
+
+# ── Local app/runtime data ──
+.orison/
+logs/
+
+# ── Tooling / editor ──
+.DS_Store
+.worktrees/
+.omc/
+.claude/
+
+# ── Local working drafts (plans / reviews / specs) — not version-controlled ──
+.scratch/
+docs/internal/archive/
+docs/internal/*-plan.md
+
+# ── 外部下载的第三方插件项目（非本仓库内容）──
+oh-story-claudecode-main/

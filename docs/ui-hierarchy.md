@@ -1,0 +1,198 @@
+# Orison Space — UI 层级结构
+
+本文档描述桌面端工作区的完整 UI 组件层级，用于对接和展示。
+
+## 顶层页面
+
+| 页面 | 组件 | 路径 |
+|------|------|------|
+| 项目管理 | `ProjectsPage` | `pages/projects/` |
+| 工作区 | `WorkspacePage` | `pages/workspace/` |
+
+## 工作区布局总览
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                          TopBar                                      │
+├──────┬──────────┬──────────────────────────┬────────────────────────┤
+│ Icon │ Project  │                          │                        │
+│ Rail │ Tree /   │  文件编辑模式             │     Agent Panel        │
+│      │ Search / │  (有打开的文件 Tab 时)    │     (全高独立)          │
+│      │ Timeline │  ─── 或 ───              │                        │
+│      │ (互斥)   │  ActivePage 页面视图      │                        │
+│      │          │  (无文件 Tab 时)          │                        │
+├──────┴──────────┴──────────────────────────┴────────────────────────┤
+│                          StatusBar                                   │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+## 组件层级树
+
+```
+App
+├── ProjectsPage
+│   ├── ProjectCard[] (已有项目卡片)
+│   ├── ProjectsEmptyState (无项目时)
+│   └── NewProjectDialog
+└── WorkspacePage
+    └── WorkspaceLayout
+        ├── TopBar
+        │   ├── MenuDropdown (文件/编辑/视图/帮助 内联菜单栏)
+        │   ├── NotificationCenter
+        │   └── WindowControls (最小化/最大化/关闭)
+        ├── SideNav (Icon Rail)
+        │   ├── ExplorerBtn (资源管理器，切换左侧面板)
+        │   ├── SearchBtn (搜索，切换左侧面板)
+        │   ├── TimelineBtn (时间线，切换左侧面板)
+        │   ├── ─── 分隔线 ───
+        │   ├── NavButton[] (overview/outline/assets — setActivePage)
+        │   ├── WritingBtn (edit_note — openWriting → 打开 chapters/*.md 文件 Tab)
+        │   ├── ─── 分隔线 ───
+        │   ├── NavButton[] (image_gen — setActivePage)
+        │   ├── ─── 分隔线 ───
+        │   ├── AgentToggle (toggle 右侧 Agent Panel)
+        │   └── SettingsBtn
+        ├── 左侧面板 (互斥，由 activeSidebarPanel 控制)
+        │   ├── ProjectTree (activeSidebarPanel='explorer')
+        │   ├── SearchPanel (activeSidebarPanel='search')
+        │   └── TimelinePanel (activeSidebarPanel='timeline')
+        ├── workspace-main (flex column)
+        │   ├── [文件编辑模式: mainView='files' && hasOpenFiles = true]
+        │   │   ├── FileTabBar
+        │   │   ├── FileEditor
+        │   │   └── SplitFileEditor (splitDirection !== 'none' 时)
+        │   ├── [页面模式: mainView='page', 按 activePage 切换]
+        │   │   ├── OverviewPage (activePage='overview')
+        │   │   ├── OutlineEditor (activePage='outline')
+        │   │   ├── ImageGenEditor (activePage='image_gen')
+        │   │   ├── AssetsPanel (activePage='assets')
+        │   │   └── OverviewPage (activePage='novel'|'script' — legacy fallback)
+        │   └── BottomPanel (可折叠，条件渲染 bottomPanelOpen)
+        │       ├── Tab: Output
+        │       └── Tab: Tasks
+        ├── ResizeHandle (Agent Panel 宽度调整)
+        ├── AgentPanel (可折叠，全高，chat/history/settings 三视图)
+        │   ├── AgentPanel header
+        │   │   ├── Title ("Agent")
+        │   │   ├── Settings btn
+        │   │   ├── NewConversation btn
+        │   │   └── History btn
+        │   ├── [view='settings'] AgentSettings (skill 包启用/停用)
+        │   ├── [view='history'] AgentHistory (历史列表)
+        │   │   └── HistoryItem[] (title + date + messageCount + delete)
+        │   └── [view='chat']
+        │       ├── AgentMessages (消息流，auto-scroll)
+        │       │   ├── AgentMessageItem (role=user，含 references 引用卡)
+        │       │   ├── AgentMessageItem (role=assistant)
+        │       │   └── AgentMessageItem (role=tool)
+        │       │       ├── AgentToolCard (普通 tool 结果，图像读 metadata.paths)
+        │       │       └── DiffCard (写入类 tool 结果: chapter/passage)
+        │       │           ├── Header (fileName + status)
+        │       │           ├── Body (diff preview / SideBySideDiff)
+        │       │           └── Actions (Accept / Reject)
+        │       └── AgentInput
+        │           ├── [pendingToolConfirm] AgentConfirmCard
+        │           ├── [pendingPassageResolve] AgentPassageResolveCard
+        │           ├── Toolbar (Model select + Mode select)
+        │           ├── Textarea (消息输入)
+        │           └── Send/Stop btn
+        └── StatusBar (底部状态栏，常驻)
+```
+
+## 组件名称对照表
+
+| 组件名 | 文件路径 | 职责 |
+|--------|----------|------|
+| `TopBar` | `features/top-bar/TopBar.tsx` | 自定义标题栏 + 菜单 + 窗口控制 |
+| `MenuDropdown` | `features/top-bar/MenuDropdown.tsx` | 菜单栏下拉项 |
+| `SideNav` | `features/side-nav/SideNav.tsx` | 左侧图标导航栏 |
+| `ProjectTree` | `features/project-tree/ProjectTree.tsx` | 项目文件树 |
+| `SearchPanel` | `features/search-panel/SearchPanel.tsx` | 搜索面板（与 ProjectTree 互斥） |
+| `TimelinePanel` | `features/timeline/TimelinePanel.tsx` | 时间线面板（左侧面板模式） |
+| `OverviewPage` | `features/overview/OverviewPage.tsx` | 项目总览仪表盘 |
+| `OutlineEditor` | `features/editor/OutlineEditor.tsx` | 大纲编辑器（Notion block 风格） |
+| `ImageGenEditor` | `features/editor/ImageGenEditor.tsx` | 图片生成面板 |
+| `AssetsPanel` | `features/assets/AssetsPanel.tsx` | 资产库面板 |
+| `openWriting` | `features/editor/openWriting.ts` | 写作入口：将稿件作为 `chapters/*.md` 文件 Tab 打开（正文事实来源，替代已退役的 novel/script 页面） |
+| `FileTabBar` | `features/editor/FileTabBar.tsx` | 文件标签栏 |
+| `FileEditor` | `features/editor/FileEditor.tsx` | 文件编辑器 |
+| `SplitFileEditor` | `features/editor/SplitFileEditor.tsx` | 分屏文件编辑器 |
+| `FindReplaceBar` | `features/editor/FindReplaceBar.tsx` | 查找替换栏 |
+| `CommandPalette` | `features/command-palette/CommandPalette.tsx` | 命令面板 |
+| `BottomPanel` | `features/bottom-panel/BottomPanel.tsx` | 底部面板容器（output / tasks） |
+| `AgentPanel` | `features/agent-panel/AgentPanel.tsx` | Agent 面板主容器 |
+| `AgentMessages` | `features/agent-panel/AgentMessages.tsx` | 消息流列表 |
+| `AgentMessageItem` | `features/agent-panel/AgentMessageItem.tsx` | 单条消息渲染 |
+| `AgentToolCard` | `features/agent-panel/AgentToolCard.tsx` | Tool 结果折叠卡片 |
+| `DiffCard` | `features/agent-panel/DiffCard.tsx` | 写入类 diff 预览 + Accept/Reject |
+| `AgentConfirmCard` | `features/agent-panel/AgentConfirmCard.tsx` | Tool 执行确认卡片（AgentInput 上方） |
+| `AgentPassageResolveCard` | `features/agent-panel/AgentPassageResolveCard.tsx` | 选段改写候选定位确认卡（AgentInput 上方） |
+| `AgentSettings` | `features/agent-panel/AgentSettings.tsx` | 设置视图（skill 包启用/停用） |
+| `SideBySideDiff` | `features/agent-panel/SideBySideDiff.tsx` | 并排 diff 视图 |
+| `AgentInput` | `features/agent-panel/AgentInput.tsx` | 输入区 + 工具栏 |
+| `AgentHistory` | `features/agent-panel/AgentHistory.tsx` | 历史对话列表 |
+| `StatusBar` | `features/status-bar/StatusBar.tsx` | 底部状态栏 |
+| `ResizeHandle` | `shared/components/ResizeHandle.tsx` | 面板拖拽调整手柄 |
+| `WorkspaceLayout` | `widgets/layout/WorkspaceLayout.tsx` | 工作区 Grid/Flex 布局编排 |
+
+## 布局实现
+
+`WorkspaceLayout` 使用 CSS Grid + Flex 组合：
+
+```
+workspace-shell
+├── workspace-body (CSS Grid: icon-rail | sidebar-panel | resize | main-area)
+│   ├── SideNav
+│   ├── 左侧面板 (ProjectTree / SearchPanel / TimelinePanel)
+│   ├── ResizeHandle
+│   └── main-area (Flex row)
+│       ├── workspace-main (Flex column, flex:1)
+│       │   ├── [文件编辑模式: mainView='files']
+│       │   │   ├── FileTabBar
+│       │   │   └── workspace-content → FileEditor + SplitFileEditor
+│       │   ├── [页面模式: mainView='page']
+│       │   │   └── workspace-panel-content → 按 activePage 渲染对应组件
+│       │   └── BottomPanel (条件渲染 bottomPanelOpen)
+│       ├── ResizeHandle (Agent Panel 宽度)
+│       └── AgentPanel (可调宽度, 全高)
+└── StatusBar
+```
+
+渲染逻辑：
+1. 内容区由 `mainView: 'page' | 'files'` 状态控制切换模式：
+   - `mainView === 'files'` 且 `hasOpenFiles` 为 true → 显示 FileTabBar + FileEditor（+ 可选 SplitFileEditor）
+   - `mainView === 'page'` → 按 `activePage` switch 渲染对应页面组件
+2. 打开文件时自动设置 `mainView: 'files'`；点击侧栏导航页面入口时设置 `mainView: 'page'`
+3. 两种模式互斥，不会同时渲染
+4. `activePage` 的 `'novel'` / `'script'` 为遗留兜底值，现在都回退渲染 OverviewPage；稿件正文改为通过 `openWriting`（`edit_note` 侧栏入口）以 `chapters/*.md` 文件 Tab 打开
+
+底部面板始终可用（所有模式下都可展开）。底部展开按钮在面板关闭时显示。
+
+左侧面板（ProjectTree / SearchPanel / TimelinePanel）由 `activeSidebarPanel` 状态控制互斥切换，类似 VSCode 的 Explorer / Search 面板。
+
+Agent Panel 与 workspace-main 同级 flex 子项，因此不受 BottomPanel 高度影响，始终从顶部延伸到窗口底部。
+
+## i18n 命名空间
+
+所有 Agent 面板文本使用 `agent.*` 命名空间：
+
+| Key | en-US | zh-CN |
+|-----|-------|-------|
+| `agent.title` | Agent | Agent |
+| `agent.you` | You | 你 |
+| `agent.agent` | Agent | Agent |
+| `agent.placeholder` | Ask the agent... | 向 Agent 提问... |
+| `agent.selectModel` | Select model | 选择模型 |
+| `agent.modeReadonly` | Read | 只读 |
+| `agent.modeSuggest` | Suggest | 建议 |
+| `agent.modeAuto` | Auto | 自动 |
+| `agent.send` | Send | 发送 |
+| `agent.stop` | Stop | 停止 |
+| `agent.accept` | Accept | 接受 |
+| `agent.reject` | Reject | 拒绝 |
+| `agent.applied` | Applied | 已应用 |
+| `agent.resolved` | Resolved | 已处理 |
+| `agent.newConversation` | New conversation | 新建对话 |
+| `agent.history` | History | 历史记录 |
+| `agent.noHistory` | No previous conversations. | 暂无历史对话。 |
+| `agent.emptyHint` | Ask the agent anything about your project. | 向 Agent 提问关于你项目的任何问题。 |

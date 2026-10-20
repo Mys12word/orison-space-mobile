@@ -1,0 +1,555 @@
+/* ── Orison Space 手机版 ──
+ * Loaded after the upstream global.css so it can refine the desktop-first IDE
+ * layout for touch screens without forking the original stylesheet. */
+
+:root {
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
+  --mobile-tabbar-height: 56px;
+}
+
+html,
+body {
+  height: 100%;
+  overscroll-behavior: none;
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  /* Prevent iOS/Android pull-to-refresh from fighting the app's scroll areas. */
+  overscroll-behavior-y: none;
+}
+
+/* Touch targets: the desktop UI uses 28–32px controls; bump anything that is
+ * a primary hit area once the viewport is phone-sized. */
+@media (max-width: 760px) {
+  button,
+  [role='button'] {
+    touch-action: manipulation;
+  }
+}
+
+/* ── Folder picker overlay (host-level UI) ── */
+.mobile-picker {
+  position: fixed;
+  inset: 0;
+  z-index: 4000;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  background: var(--overlay-backdrop, rgba(0, 0, 0, 0.45));
+  padding: 0;
+}
+
+.mobile-picker-sheet {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-width: 560px;
+  height: 82vh;
+  border-radius: 20px 20px 0 0;
+  background: var(--surface-container-lowest, #fff);
+  color: var(--on-surface, #1b1b1b);
+  box-shadow: 0 -12px 40px rgba(0, 0, 0, 0.28);
+  overflow: hidden;
+  padding-bottom: var(--safe-bottom);
+}
+
+.mobile-picker-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--outline-variant, #e0e0e0);
+}
+
+.mobile-picker-title {
+  flex: 1;
+  font-size: 16px;
+  font-weight: 600;
+  text-align: center;
+}
+
+.mobile-picker-spacer {
+  width: 40px;
+}
+
+.mobile-picker-close,
+.mobile-picker-secondary,
+.mobile-picker-primary {
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.mobile-picker-close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 999px;
+  color: var(--on-surface-variant, #555);
+}
+
+.mobile-picker-path {
+  padding: 10px 16px 6px;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--on-surface-variant, #666);
+  word-break: break-all;
+}
+
+.mobile-picker-list {
+  flex: 1;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: 4px 8px 12px;
+}
+
+.mobile-picker-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 48px;
+  padding: 4px 8px;
+  border: none;
+  border-radius: 12px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 15px;
+  text-align: left;
+}
+
+.mobile-picker-row:active {
+  background: var(--hover-overlay, rgba(0, 0, 0, 0.06));
+}
+
+.mobile-picker-row.is-selected {
+  background: var(--accent-container, rgba(255, 145, 80, 0.16));
+}
+
+.mobile-picker-row-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mobile-picker-chevron {
+  color: var(--on-surface-variant, #888);
+}
+
+.mobile-picker-empty,
+.mobile-picker-loading {
+  padding: 24px 16px;
+  text-align: center;
+  font-size: 13px;
+  color: var(--on-surface-variant, #777);
+}
+
+.mobile-picker-error {
+  margin: 4px 16px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: rgba(220, 60, 60, 0.12);
+  color: var(--error, #b3261e);
+  font-size: 13px;
+}
+
+.mobile-picker-foot {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border-top: 1px solid var(--outline-variant, #e0e0e0);
+}
+
+.mobile-picker-secondary {
+  padding: 10px 14px;
+  border-radius: 999px;
+  font-size: 14px;
+  background: var(--surface-container-low, #f2f2f2);
+}
+
+.mobile-picker-primary {
+  flex: 1;
+  min-height: 44px;
+  border-radius: 999px;
+  background: var(--accent, #b35c00);
+  color: var(--on-accent, #fff);
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.mobile-picker-primary:disabled {
+  opacity: 0.45;
+}
+
+/* ──────────────────────────────────────────────────────────────────────────
+ * Mobile shell (rendered by widgets/layout/MobileWorkspaceLayout.tsx)
+ * ────────────────────────────────────────────────────────────────────────── */
+
+#root {
+  height: 100vh;
+  height: 100dvh;
+}
+
+.mobile-workspace {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.mobile-main {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  display: flex;
+}
+
+.mobile-main .workspace-main {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+}
+
+/* Bottom tab bar */
+.mobile-tabbar {
+  flex-shrink: 0;
+  display: flex;
+  align-items: stretch;
+  height: calc(var(--mobile-tabbar-height) + var(--safe-bottom));
+  padding-bottom: var(--safe-bottom);
+  border-top: 1px solid var(--border-default, var(--outline-variant));
+  background: var(--surface-container-low, var(--surface));
+  z-index: 950;
+}
+
+.mobile-tabbar-item {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  border: none;
+  background: transparent;
+  color: var(--on-surface-variant);
+  font: inherit;
+  padding: 4px 0 2px;
+  touch-action: manipulation;
+}
+
+.mobile-tabbar-item .material-symbols-outlined {
+  font-size: 22px;
+  line-height: 1;
+}
+
+.mobile-tabbar-label {
+  font-size: 10px;
+  line-height: 1.2;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mobile-tabbar-item.is-active {
+  color: var(--accent);
+}
+
+.mobile-tabbar-item.is-active .material-symbols-outlined {
+  font-variation-settings: 'FILL' 1, 'wght' 500, 'GRAD' 0, 'opsz' 24;
+}
+
+/* File tree / search / timeline drawer */
+.mobile-drawer-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  background: var(--overlay-backdrop, rgba(0, 0, 0, 0.42));
+  animation: mobile-fade-in 120ms ease-out;
+}
+
+.mobile-drawer {
+  display: flex;
+  flex-direction: column;
+  width: min(88vw, 380px);
+  height: 100%;
+  padding-top: var(--safe-top);
+  background: var(--surface-container-lowest, var(--surface));
+  border-right: 1px solid var(--outline-variant);
+  box-shadow: 12px 0 32px rgba(0, 0, 0, 0.22);
+  animation: mobile-slide-in-left 160ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.mobile-drawer-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 8px 6px;
+  border-bottom: 1px solid var(--outline-variant);
+  flex-shrink: 0;
+}
+
+.mobile-segmented {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  gap: 2px;
+  padding: 2px;
+  border-radius: 999px;
+  background: var(--surface-container-low, #f2f2f2);
+}
+
+.mobile-segmented-btn {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-height: 34px;
+  padding: 0 6px;
+  border: none;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--on-surface-variant);
+  font: inherit;
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.mobile-segmented-btn .material-symbols-outlined {
+  font-size: 17px;
+}
+
+.mobile-segmented-btn > span:last-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mobile-segmented-btn.is-active {
+  background: var(--surface-container-lowest, #fff);
+  color: var(--on-surface);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.16);
+}
+
+.mobile-icon-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  border: none;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--on-surface-variant);
+}
+
+.mobile-drawer-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  overflow: hidden;
+}
+
+.mobile-drawer-body > * {
+  flex: 1;
+  width: 100%;
+  min-width: 0;
+}
+
+.mobile-drawer-body .project-tree-panel {
+  width: 100% !important;
+  max-width: none;
+  border-right: none;
+}
+
+/* Agent sheet */
+.mobile-sheet {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  display: flex;
+  flex-direction: column;
+  padding-top: var(--safe-top);
+  padding-bottom: var(--safe-bottom);
+  background: var(--surface-container-lowest, var(--surface));
+  animation: mobile-slide-up 180ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.mobile-sheet-head {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 36px;
+  border-bottom: 1px solid var(--outline-variant);
+}
+
+.mobile-sheet-close {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  height: 28px;
+  padding: 0 12px;
+  border: none;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--on-surface-variant);
+  font: inherit;
+  font-size: 12px;
+}
+
+.mobile-sheet-close .material-symbols-outlined {
+  font-size: 18px;
+}
+
+.mobile-sheet-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+
+.mobile-sheet-body .agent-panel {
+  flex: 1;
+  width: 100%;
+  min-width: 0;
+  max-width: none;
+  border-left: none;
+}
+
+@keyframes mobile-slide-in-left {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(0); }
+}
+
+@keyframes mobile-slide-up {
+  from { transform: translateY(24px); opacity: 0.6; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+@keyframes mobile-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* ── Desktop → phone refinements ── */
+@media (max-width: 760px) {
+  .workspace-topbar {
+    height: calc(44px + var(--safe-top));
+    padding: var(--safe-top) 10px 0;
+    gap: 6px;
+  }
+
+  .workspace-brand {
+    font-size: 0.95rem;
+  }
+
+  .workspace-brand-version,
+  .topbar-traffic-light-spacer,
+  .window-controls {
+    display: none !important;
+  }
+
+  /* The four menu triggers fit a phone width; never scroll the menu bar — an
+     overflow container would clip the absolutely positioned dropdowns. */
+  .topbar-menu {
+    gap: 0;
+    overflow: visible;
+    min-width: 0;
+  }
+
+  .topbar-menu-trigger {
+    padding: 0 8px;
+    font-size: 0.82rem;
+  }
+
+  /* Anchor every dropdown to the topbar itself so it opens downward, fully
+     inside the viewport, instead of being squeezed under its trigger. */
+  .topbar-menu-group {
+    position: static;
+  }
+
+  .topbar-menu-dropdown {
+    position: absolute;
+    top: 100%;
+    left: auto;
+    right: 8px;
+    width: min(264px, calc(100vw - 16px));
+    min-width: 0;
+    max-height: calc(100dvh - 96px - var(--safe-top));
+    overflow-y: auto;
+  }
+
+  .projects-header {
+    height: 52px;
+    padding: 0 16px;
+  }
+
+  .projects-grid-container {
+    padding: 16px;
+  }
+
+  .projects-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+  }
+
+  .projects-grid-card {
+    aspect-ratio: 3 / 4;
+    min-height: 0;
+    padding: 10px;
+  }
+
+  .status-bar {
+    display: none;
+  }
+
+  .workspace-main {
+    min-width: 0;
+  }
+
+  .workspace-content {
+    padding: 14px;
+  }
+
+  .file-tab-bar {
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .file-tab-bar::-webkit-scrollbar {
+    display: none;
+  }
+
+  .workspace-panel-content {
+    padding: 0;
+  }
+
+  /* Dialogs: near-fullscreen sheets on a phone. */
+  .settings-dialog,
+  .topbar-new-dialog-overlay > .settings-dialog {
+    width: min(94vw, 620px) !important;
+    max-width: 94vw;
+    max-height: 88dvh;
+  }
+
+  .settings-dialog-body {
+    padding: 12px 14px;
+  }
+}

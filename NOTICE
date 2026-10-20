@@ -1,0 +1,27 @@
+Orison Space 手机版（Android 移植）
+Copyright 2026 Mys12word and DeepSeek
+
+This product is a derivative work of "Orison Space" by LumenStorm,
+licensed under the Apache License, Version 2.0.
+Upstream repository: https://github.com/LumenStorm/OrisonSpace
+
+Android port: Mys12word (@Mys12word) with DeepSeek.
+
+Modifications for the Android port:
+- added apps/mobile/ (Node host, Electron/better-sqlite3 shims, HTTP+WebSocket bridge,
+  mobile renderer entry, on-device folder picker, PWA assets, build scripts)
+- added apk/ and tools/apk/ (WebView shell + on-device APK build toolchain)
+- refactored the renderer API surface into apps/desktop/client/shell/preload/api.ts
+- added a phone layout and touch-oriented styles to the shared React UI
+- added ORISON_PROJECTS_ROOT support to the desktop path guard
+- replaced orison-file:// URLs with an HTTP equivalent for the web host
+
+Bundled components:
+- Node.js runtime (MIT) — https://nodejs.org
+- Material Symbols (Apache-2.0), React (MIT), TipTap (MIT), isomorphic-git (MIT),
+  mammoth (BSD-2-Clause), turndown (MIT), pino (MIT)
+
+Full dependency licenses are available from each package in the pnpm store.
+
+The prebuilt APK is distributed as a GitHub Release asset and is signed with a
+locally generated development key.

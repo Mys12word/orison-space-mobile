@@ -1,0 +1,203 @@
+# 模块边界与拆分规则
+
+> 状态：当前生效中的架构规则文档。只要 UI、桌面 IPC、库（agent / model-protocols）职责或存储边界发生变化，就要同步更新这里。
+
+## 目标
+
+- 让页面、功能模块、服务层、模型协议层都能独立理解
+- 让 UI 文件专注于渲染与交互，不混入文件系统、provider 协议或复杂 payload 拼装
+- 让桌面主进程与渲染层、库（agent / model-protocols）之间的边界稳定，便于替换实现而不破坏契约
+- 优先强调明确的模块所有权，而不是继续堆大型混合文件
+
+## 桌面 UI
+
+- 渲染层遵循 `app -> pages -> widgets -> features -> shared` 的分层约定。
+- 高层可以依赖低层，低层不能反向依赖高层。
+- `src/app/*` 只负责应用根部组合：
+  - 顶层页面切换
+  - 全局 bootstrap effect
+  - 顶层错误边界和壳层拼装
+- `src/pages/*` 是页面级入口文件：
+  - 可以组合 feature / widget / shared
+  - 不应该承载重度领域逻辑、复杂 payload 转换或 provider 逻辑
+- `src/widgets/*` 承载跨 feature 的页面级外壳与复用块，例如：
+  - `widgets/layout/WorkspaceLayout.tsx`
+  - `widgets/projects/*`
+- `src/features/<domain>/*` 拥有具体产品域，例如：
+  - agent-panel
+  - assets
+  - bottom-panel
+  - command-palette
+  - editor
+  - memory
+  - model-settings
+  - notifications
+  - novel-workbench
+  - overview
+  - project-tree
+  - search-panel
+  - side-nav
+  - status-bar
+  - tasks
+  - timeline
+  - top-bar
+- 一个 feature 的入口组件应主要负责：
+  - 状态选择
+  - 子视图编排
+  - 页面局部布局
+- 子视图、局部 hook、纯工具函数、局部类型，只要具备独立职责，就应拆到独立文件。
+- 纯渲染辅助、树结构处理、路径转换、排序、payload 构建，不应直接写在 JSX render 体里。
+- 通用 UI 原语放在 `src/shared/components`
+- 只属于某个业务域的组件，放回对应 feature 内部
+- 被多个 feature 复用的 schema / 验证辅助，放在 `src/shared/<domain>/`
+- 所有 HTTP 请求统一放在 `src/shared/api/*.ts`
+  - slice 和组件只能调这些 helper
+  - 不直接在组件或 slice 中写 `fetch`
+- store 采用 slice 化组织：
+  - `appStore.ts` 只组合 slice
+  - 每个 slice 自己维护状态与状态迁移
+- 桌面端为纯本地应用，无需登录，启动后直接进入项目页
+- 用户可见文案统一走 `t()`，禁止新增硬编码显示文本
+
+### 样式文件组织
+
+- `src/shared/styles/` 采用文件夹分层，不再堆叠在单一目录
+  - `tokens.css` / `global.css` 保留在根
+  - `base/` 存放基础原语（`components.css` `welcome.css`）
+  - `layout/` 存放应用外壳样式（`workspace.css` `topbar.css` `sidebar.css` `pages.css`）
+  - `editor/` 存放编辑器相关样式（`tiptap.css` `outline.css` `script.css` `image-gen.css` `image-dialog.css` `novel.css` `file.css` `timeline.css`）
+  - 叶子文件 `inspector.css` / `creative.css` 暂留根目录
+- `global.css` 是唯一入口，按顺序 `@import` 其他文件
+  - 级联顺序必须保留：`.image-gen-inspector-*` 必须排在 `.image-gen-*` 之后、`components.css` 保持在所有 editor 样式之后
+  - 调整文件位置时不允许顺手改 `@import` 顺序
+- 下游消费方只 import `@desktop-ui/shared/styles/global.css`，不能跨层单独 import 子文件
+- 新增样式需归入上述文件夹；不要在根再新建扁平 CSS 文件
+
+### 设计 token 约定
+
+- **颜色**走 YAML（`themes/*.yaml`）→ 构建时生成 `tokens.css`（**自动生成，禁止手改**）。详见 `docs/theme-tokens.md`。
+- **尺寸 / 圆角 / 字号 / 层级 / 焦点环**走手写的 `shared/styles/scales.css`（主题无关，可放心编辑）：
+  - 间距用 `--space-*`、圆角用 `--radius-*`、字号用 `--text-*`、层级用 `--z-*`。
+  - **不要**在样式里写裸 z-index 数字或新魔法数；层级一律用 `--z-*` 阶梯。
+  - 字面量迁移到 token 时**只换精确命中**的值且**按属性区分**（`0.5rem` 作间距=`--space-md`、作圆角=`--radius-lg`），无对应 stop 的值保留，保证零视觉位移。
+- 键盘焦点环由 `global.css` 全局 `:focus-visible` 基线统一提供；新控件即便 `outline:none` 也会自动获得键盘焦点环，无需逐处补。
+
+## 桌面 Shell 与 IPC
+
+- IPC 契约定义在 `packages/shared-contracts/src/ipc.ts`
+- 渲染层只能通过 preload API 与主进程交互
+- 渲染层不得直接导入 Electron 或 Node 文件系统 API
+- `shell/main/ipc/*Ipc.ts` 以能力划分 handler
+- 共用校验逻辑放辅助文件，例如 `pathGuard.ts`
+- 文件与 shell 操作都必须先通过路径安全校验
+- 生成图片文件只能写入项目内允许目录，例如：
+  - `temp/images/generation`
+  - `assets/images`
+- 新项目默认根目录：`~/Documents/OrisonSpace`
+- 用户主动选择的项目目录和封面图路径，会在当前 Electron 会话里注册为允许根
+- 后台任务通过 `task:*` IPC 通道持久化到本地 SQLite（`~/.orison/data/projects.db`）
+- 渲染层 `backgroundTasksSlice` 负责任务生命周期管理与重启恢复
+
+## 模型配置与桌面模型网关
+
+- 模型配置使用 key-based 结构：
+  - `~/.orison/model/keys/*.yaml`
+- 每个 key 表示一组：
+  - `name`
+  - `baseUrl`（支持带或不带 `/v1` 后缀）
+  - `apiKey`
+- 每个 key 下的 `models[]` 表示发现的模型条目：
+  - `id`
+  - `capability`（text/image/video，由 model-registry 推断）
+  - `alias`（由 model-registry 推断）
+  - `enabled`
+- 生成请求使用 `ModelRef`：`{ keyId, modelId }`
+- `apps/desktop/client/shell/main/ipc/modelProviderIpc.ts`
+  - 负责 `model:list-remote-models`
+  - 只负责列模型，不负责生成
+- `apps/desktop/client/shell/main/ipc/modelGatewayIpc.ts`
+  - 负责 `model:generate-text`
+  - 负责 `model:generate-image`
+  - 是唯一会解密模型 `apiKey` 并调用 provider 的主进程入口
+- 渲染层永远拿不到真实 `apiKey`
+- agent 不持有 provider `apiKey`
+
+## Agent（库）
+
+- `apps/desktop/agent` 是 `@orison/desktop-agent` 包，作为库内嵌于桌面主进程
+- 不再是独立 HTTP 服务
+- 通过 `setGenerateTextFn` / `setExecuteToolFn` 依赖注入获取 LLM 和工具执行能力
+- shell 中 `agentIpc.ts` 创建 runtime 实例并注册 IPC handlers
+- Agent 不持有 provider `apiKey`，不直接请求第三方模型
+- 如果任何代码路径让 agent 重新直接请求第三方模型，应视为回归
+
+## Story Sync
+
+- 共享 story-sync 逻辑放在 `packages/story-sync/`
+- 共享内容包括：
+  - prompt 构建
+  - 响应解析
+  - patch 安全校验
+- desktop main 负责真正执行 story-sync LLM 调用
+- 渲染层通过 `storySync:run` IPC 触发
+- Agent 只负责：
+  - 校验预计算补丁
+  - 在补丁不可用时走规则回退
+- 如果任何代码路径让 agent 重新直接请求第三方模型，应视为回归
+
+## Desktop Local BFF
+
+- `apps/desktop/local-bff` 是桌面端本地项目数据读写层
+- 它负责：
+  - `project.yaml`
+  - 章节 markdown
+  - `memory/story-memory.yaml`
+  - 字段同步桥接后的本地写入
+- 渲染层不能直接 import local-bff
+- 渲染层写入必须走：
+  - preload
+  - shell IPC
+  - local-bff
+- `local-bff` 应保持 Electron 无关、路径驱动、便于测试
+
+## Auto Mode 持久化
+
+> **已移除（待重建）**：Auto Mode 执行引擎（`novelAutoModeRunner.ts` /
+> `autoModeService.ts` / `autoModeStore.ts`）随 Python agent 链在 commit 820a969
+> 删除，未替代。其 UI 空壳（AutoModeConsole / OrchestrationPanel）已在 UX 修复轮次
+> 暂时移除。重建方案见 `docs/internal/auto-mode-rebuild-plan.md`——届时执行引擎将
+> 接入现有 TypeScript `WorkflowRuntime`，持久化位置（原设计
+> `<projectPath>/runs/auto-mode/<autoModeId>.yaml`）重建时复核。
+
+## 模型协议层
+
+- 所有模型协议适配器放在 `packages/model-protocols/`
+- 该包是纯 Node 包：
+  - 不依赖 Fastify
+  - 不依赖 Electron
+  - 不依赖 dotenv
+  - 不做文件系统副作用
+- `listModels(request)`
+  - 统一走 OpenAI 兼容层（`GET {baseUrl}/v1/models`）
+  - `baseUrl` 支持带或不带 `/v1` 后缀（内部通过 `normalizeBaseUrl` 统一补齐）
+  - 覆盖直连 OpenAI、NewAPI/OneAPI 中继等所有 provider
+  - 返回 `RemoteModel[]`（id + capability + alias），能力由 `model-registry` 推断
+- `generateText / generateImage`
+  - text/image 统一走 OpenAI 兼容端点（`/v1/chat/completions`、`/v1/images/generations`、`/v1/images/edits`）
+  - text 生成使用 `@ai-sdk/openai` 的 `.chat()` 方法强制 Chat Completions API（兼容第三方 OpenAI 兼容端点，避免 Responses API）
+  - system 消息从 messages 数组中提取，通过 AI SDK 的 `system` 参数传递
+  - `baseUrl` 同样兼容带或不带 `/v1`
+  - 接收 `ResolvedModel`（含 baseUrl、apiKey、modelId、capability）
+- image adapter 支持 `image`、`mask` 字段用于图像编辑
+- 渲染层支持上传参考图进入编辑模式，自动切换到 `/images/edits` 端点并强制 n=1
+- 该包只应被桌面主进程调用（渲染层不直接 import，agent 也不直接请求第三方模型）
+
+## 文档同步规则
+
+- 只要以下内容发生变化，就必须同步更新文档：
+  - 架构边界
+  - 存储位置
+  - IPC surface
+  - 模型配置结构
+  - 启动行为
+- 根目录文档与 `docs/` 中对应参考文档都要一起更新

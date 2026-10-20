@@ -1,0 +1,104 @@
+@import "./tokens.css";
+@import "./scales.css";
+
+/* Import order matches the original monolithic layout so cascade-sensitive
+ * overrides (e.g. `.image-gen-inspector-*` rules coming after `.image-gen-*`,
+ * or `components.css` sitting last as a reset-like layer) resolve unchanged.
+ *
+ * Organization is folder-based — order is preserved. */
+
+@import "./base/welcome.css";
+
+@import "./layout/topbar.css";
+@import "./layout/workspace.css";
+@import "./layout/statusbar.css";
+@import "./layout/notifications.css";
+@import "./layout/sidebar.css";
+@import "./layout/settings.css";
+
+
+/* editor/ holds what used to be a single 2000-line editor.css. Split order
+ * mirrors the original section order (tiptap → script → image-gen
+ * → image-dialog → novel → file). */
+@import "./editor/tiptap.css";
+@import "./editor/script.css";
+@import "./editor/image-gen.css";
+@import "./editor/image-dialog.css";
+@import "./editor/novel.css";
+@import "./editor/file.css";
+@import "./editor/timeline.css";
+@import "./editor/outline.css";
+
+@import "./layout/pages.css";
+@import "./base/components.css";
+@import "../../features/agent-panel/agent-panel.css";
+
+/* ── Reset ── */
+#root {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+
+body {
+  height: 100vh;
+  overflow: hidden;
+}
+
+/* ── Skip-link (a11y) ──
+ * Hidden offscreen, visible on focus for keyboard navigation. */
+.skip-link {
+  position: absolute;
+  left: -9999px;
+  z-index: var(--z-tooltip);
+  padding: var(--space-md) var(--space-lg);
+  background: var(--surface-container-highest);
+  color: var(--on-surface);
+  border-radius: var(--radius-sm);
+  font-size: var(--text-base);
+  text-decoration: none;
+}
+.skip-link:focus {
+  left: var(--space-lg);
+  top: var(--space-lg);
+}
+
+/* ── Keyboard focus ring (a11y) ──
+ * Many controls reset `outline: none` for mouse use. :focus-visible restores
+ * a visible ring for keyboard/AT navigation only — it does not fire on click,
+ * so existing custom :focus border styling stays intact. Placed last so it
+ * wins over the scattered `outline: none` resets via source order. */
+:focus-visible {
+  outline: var(--focus-ring-width) solid var(--accent);
+  outline-offset: var(--focus-ring-offset);
+  border-radius: var(--radius-2xs);
+}
+
+/* Inputs/textarea/contenteditable already show a focus border; keep their
+ * ring tight to the field rather than offset. */
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible,
+[contenteditable]:focus-visible {
+  outline-offset: 0;
+}
+
+/* The main prose editor surface signals focus via the caret; a full-surface
+ * ring there is redundant and visually heavy. */
+.tiptap-content .tiptap:focus-visible {
+  outline: none;
+}
+
+/* ── Reduced motion ──
+ * Respect the OS-level preference: collapse transitions/animations to a
+ * near-instant duration rather than 0 so state changes still register. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
