@@ -553,3 +553,52 @@ body {
     padding: 12px 14px;
   }
 }
+
+/* ── Chapter strip in the phone editor (switch chapters without the drawer) ── */
+.chapter-strip {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 8px 12px;
+  overflow-x: auto;
+  border-bottom: 1px solid var(--outline-variant);
+  background: var(--surface-container-lowest);
+  scrollbar-width: none;
+  flex: 0 0 auto;
+}
+
+.chapter-strip::-webkit-scrollbar { display: none; }
+
+.chapter-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 auto;
+  max-width: 190px;
+  padding: 6px 12px;
+  border: 1px solid var(--outline-variant);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--on-surface-variant);
+  font: inherit;
+  font-size: var(--text-sm);
+  cursor: pointer;
+}
+
+.chapter-chip.is-active {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-soft, rgb(0 0 0 / 4%));
+}
+
+.chapter-chip-index {
+  font-variant-numeric: tabular-nums;
+  opacity: 0.75;
+  font-size: var(--text-xs);
+}
+
+.chapter-chip-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

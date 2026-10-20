@@ -3,6 +3,13 @@
 本项目所有重要变更都会记录在此文件中。
 
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
+# 0.3.0-mobile.19
+
+本版把三处修复合并为一个版本（0.17 / 0.18 未单独发布）：
+
+- 写作页新增「章节条」：编辑器上方的横向章节胶囊，点一下切换章节并高亮当前章，不用再去文件抽屉里翻。
+- 修复 Agent 报 `Directory not found: "."`：部分模型会把工具参数再 JSON 编码一层（`dirPath` 变成带引号的 `"."`），现在解析后会脱一层壳，正文类字段（content/text/markdown）保持原样。
+- 修复 Agent「思考一半自己停」：上游偶发返回空响应（流被截断）时，旧逻辑直接把这一轮当成结束；现在会自动提示模型继续（最多 2 次），仍为空则给出一条明确的停止提示，不再毫无解释地断掉。
 # 0.3.0-mobile.16
 
 - Agent 的系统提示新增「Saving chapters」：写/续写章节必须调用 chapter_write 把正文落盘到 chapters/<id>.md，先 chapter_list 复用已有 id；只给走向/大纲时要在回复里说明「尚未保存」。

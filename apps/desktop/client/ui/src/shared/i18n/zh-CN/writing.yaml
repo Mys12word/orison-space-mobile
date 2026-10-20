@@ -5,3 +5,4 @@ writing:
   createNext: "新建下一章"
   creating: "创建中…"
   createFailed: "新建章节失败：{reason}"
+  switchChapter: "章节切换"

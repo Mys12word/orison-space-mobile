@@ -45,6 +45,10 @@ export async function runLoop(opts: LoopOptions): Promise<SessionMessage[]> {
   let steps = 0;
   let contextState = opts.contextState ?? createDefaultContextState();
   let consecutiveLengthHits = 0;
+  // A relay can drop a stream and hand back an empty completion; silently
+  // ending there looks like the agent "stopped halfway through".
+  let consecutiveEmptyResponses = 0;
+  const MAX_EMPTY_RESPONSE_RETRIES = 2;
   let consecutiveToolErrors = 0;
   const initialActiveSkill = await resolveLatestActiveSkillMetadata(opts, readLatestActiveSkillMetadata(opts.messages));
   let activeSkillAllowedTools: string[] | undefined = initialActiveSkill?.allowedTools;
@@ -141,9 +145,37 @@ export async function runLoop(opts: LoopOptions): Promise<SessionMessage[]> {
         onMessage?.(contMsg);
         continue;
       }
+
+      // Empty completion (no text, no tools) — usually a truncated stream from
+      // the relay. Nudge the model to continue instead of ending the run.
+      if (!String(response.content ?? '').trim()) {
+        consecutiveEmptyResponses++;
+        if (consecutiveEmptyResponses <= MAX_EMPTY_RESPONSE_RETRIES) {
+          const nudge: SessionMessage = {
+            id: randomUUID(),
+            role: 'user',
+            content: 'Your previous turn came back empty. Continue the task from exactly where you left off.',
+            createdAt: Date.now(),
+          };
+          result.push(nudge);
+          onMessage?.(nudge);
+          continue;
+        }
+        const note: SessionMessage = {
+          id: randomUUID(),
+          role: 'assistant',
+          content: '（上游模型连续返回空响应，本次已停止。可以再发一条消息继续。）',
+          createdAt: Date.now(),
+        };
+        result.push(note);
+        onMessage?.(note);
+        logger.warn({ finishReason: response.finishReason }, 'model returned empty responses repeatedly');
+        break;
+      }
       break;
     }
     consecutiveLengthHits = 0;
+    consecutiveEmptyResponses = 0;
 
     // Execute tool calls in parallel
     const ctx: ToolContext = {
@@ -228,6 +260,7 @@ export async function runLoop(opts: LoopOptions): Promise<SessionMessage[]> {
         if (typeof params === 'string') {
           try { params = JSON.parse(params); } catch { /* 保持原样 */ }
         }
+        params = unwrapDoubleEncodedParams(params);
         const toolResult = await tool.execute(params, ctx);
         return {
           id: randomUUID(),
@@ -343,4 +376,40 @@ function throwIfAborted(abort: AbortSignal): void {
       ? abort.reason
       : new DOMException('Aborted', 'AbortError');
   }
+}
+
+/**
+ * Some providers (observed with Claude relays) double-encode scalar arguments:
+ * the model sends dirPath as a quoted string ( wrapped in quotes), so the
+ * tool looks for a directory literally named ".". Unwrap one JSON layer for
+ * short values; long fields (chapter content) are left alone because quoted
+ * prose is legal.
+ */
+function unwrapDoubleEncodedParams(value: unknown, key?: string): unknown {
+  if (typeof value === 'string') {
+    if (key === 'content' || key === 'text' || key === 'markdown') return value;
+    const trimmed = value.trim();
+    if (trimmed.length < 200 && trimmed.startsWith(String.fromCharCode(34)) && trimmed.endsWith(String.fromCharCode(34))) {
+      try {
+        const parsed = JSON.parse(trimmed);
+        if (typeof parsed === 'string' && !parsed.includes(String.fromCharCode(10))) return parsed;
+      } catch { /* keep as-is */ }
+    }
+    if (trimmed.length < 4000 && trimmed.startsWith('{') && trimmed.endsWith('}')) {
+      try {
+        const parsed = JSON.parse(trimmed);
+        if (parsed && typeof parsed === 'object') return unwrapDoubleEncodedParams(parsed, key);
+      } catch { /* keep as-is */ }
+    }
+    return value;
+  }
+  if (Array.isArray(value)) return value.map((item) => unwrapDoubleEncodedParams(item, key));
+  if (value && typeof value === 'object') {
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+      out[k] = unwrapDoubleEncodedParams(v, k);
+    }
+    return out;
+  }
+  return value;
 }

@@ -15,6 +15,7 @@ const TimelinePanel = lazy(() => import('../../features/timeline/TimelinePanel')
 const OverviewPage = lazy(() => import('../../features/overview/OverviewPage').then((m) => ({ default: m.OverviewPage })));
 const OutlineEditor = lazy(() => import('../../features/editor/OutlineEditor').then((m) => ({ default: m.OutlineEditor })));
 const WritingStart = lazy(() => import('../../features/editor/WritingStart').then((m) => ({ default: m.WritingStart })));
+const ChapterStrip = lazy(() => import('../../features/editor/ChapterStrip').then((m) => ({ default: m.ChapterStrip })));
 const ImageGenEditor = lazy(() => import('../../features/editor/ImageGenEditor').then((m) => ({ default: m.ImageGenEditor })));
 const AssetsPanel = lazy(() => import('../../features/assets/AssetsPanel').then((m) => ({ default: m.AssetsPanel })));
 const FileTabBar = lazy(() => import('../../features/editor/FileTabBar').then((m) => ({ default: m.FileTabBar })));
@@ -119,6 +120,9 @@ export function MobileWorkspaceLayout() {
       return (
         <>
           <FileTabBar />
+          <Suspense fallback={null}>
+            <ChapterStrip />
+          </Suspense>
           <div className="workspace-content workspace-content--flush mobile-editor-surface" style={{ flex: 1, minWidth: 0 }}>
             <FileEditor />
           </div>
