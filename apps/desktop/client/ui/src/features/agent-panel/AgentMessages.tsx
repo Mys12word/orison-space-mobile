@@ -11,11 +11,16 @@ type Props = {
   messages: AgentMessage[];
   loading: boolean;
   error: string | null;
+  /** Prose already streamed for the message being written, if any. */
+  streaming?: string | null;
 };
 
 type MessageGroup =
   | { type: 'single'; message: AgentMessage; index: number }
   | { type: 'child-group'; source: 'skill' | 'subagent'; role: string; depth: number; messages: AgentMessage[] };
+
+/** Must match SESSION_NUDGE_PREFIX in @orison/desktop-agent. */
+const RUNTIME_NUDGE_PREFIX = '⟦nudge⟧ ';
 
 function groupMessages(messages: AgentMessage[]): MessageGroup[] {
   const groups: MessageGroup[] = [];
@@ -52,7 +57,7 @@ function snippet(text: string): string {
   return flat.length > 80 ? `${flat.slice(0, 80)}…` : flat;
 }
 
-export function AgentMessages({ messages, loading, error }: Props) {
+export function AgentMessages({ messages, loading, error, streaming }: Props) {
   const { resolvedLocale } = useAppStore(useShallow((s) => ({ resolvedLocale: s.resolvedLocale })));
   const { t } = useI18n(resolvedLocale);
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -61,12 +66,19 @@ export function AgentMessages({ messages, loading, error }: Props) {
   const [atBottom, setAtBottom] = useState(true);
   const [outlineOpen, setOutlineOpen] = useState(false);
 
-  const grouped = useMemo(() => groupMessages(messages), [messages]);
+  // Runtime nudges ("continue from where you left off") are stored as user
+  // messages so the model answers them, but the user never typed them.
+  const visibleMessages = useMemo(
+    () => messages.filter((m) => !(m.role === 'user' && (m.content ?? '').startsWith(RUNTIME_NUDGE_PREFIX))),
+    [messages],
+  );
+
+  const grouped = useMemo(() => groupMessages(visibleMessages), [visibleMessages]);
 
   // Outline lists what the user actually sent — the assistant/tool noise stays out.
   const sentMessages = useMemo(
-    () => messages.filter((m) => m.role === 'user' && (m.content ?? '').trim().length > 0),
-    [messages],
+    () => visibleMessages.filter((m) => m.role === 'user' && (m.content ?? '').trim().length > 0),
+    [visibleMessages],
   );
 
   useEffect(() => {
@@ -133,7 +145,15 @@ export function AgentMessages({ messages, loading, error }: Props) {
             </div>
           );
         })}
-        {loading && (
+        {loading && !!streaming && (
+          <div className="agent-msg-anchor">
+            <AgentMessageItem
+              message={{ id: "streaming", role: "assistant", content: streaming, createdAt: Date.now() }}
+              isLatest
+            />
+          </div>
+        )}
+        {loading && !streaming && (
           <div className="agent-message-loading">
             <span className="agent-loading-dot" />
             <span className="agent-loading-dot" />

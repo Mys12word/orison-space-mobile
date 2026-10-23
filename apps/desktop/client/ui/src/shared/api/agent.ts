@@ -36,6 +36,7 @@ export type AgentChildStreamEvent = {
 
 export type AgentStreamEvent =
   | { type: 'assistant'; data: { id: string; content: string; toolCalls?: unknown[] } }
+  | { type: 'assistant-delta'; data: { id: string; content: string } }
   | { type: 'tool'; data: { id: string; results: unknown[] } }
   | { type: 'confirm_required'; data: { sessionId?: string; callId: string; name: string; input: unknown; createdAt?: number } }
   | { type: 'done'; data: { status: string } }

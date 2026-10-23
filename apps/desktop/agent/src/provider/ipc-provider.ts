@@ -1,3 +1,4 @@
+import { SESSION_NUDGE_PREFIX } from '../types';
 import type { SessionMessage, ToolCall, ToolDefinition } from '../types';
 import type { CacheConfig } from '../context/contextManager';
 import { zodToJsonSchema } from 'zod-to-json-schema';
@@ -6,6 +7,8 @@ export interface GenerateOptions {
   modelRef?: { keyId: string; modelId: string };
   temperature?: number;
   maxTokens?: number;
+  /** Incremental prose chunks, forwarded to the UI while the model writes. */
+  onTextDelta?: (text: string) => void;
 }
 
 export interface GenerateResult {
@@ -25,7 +28,11 @@ export interface GenerateTextRequest {
   };
 }
 
-export type GenerateTextFn = (body: GenerateTextRequest, abort: AbortSignal) => Promise<{
+export type GenerateTextFn = (
+  body: GenerateTextRequest,
+  abort: AbortSignal,
+  onTextDelta?: (text: string) => void,
+) => Promise<{
   text?: string;
   content?: string;
   toolCalls?: Array<{ id: string; name: string; arguments: string }>;
@@ -36,6 +43,10 @@ let _generateText: GenerateTextFn | undefined;
 
 export function setGenerateTextFn(fn: GenerateTextFn) {
   _generateText = fn;
+}
+
+function stripInternalPrefix(content: string): string {
+  return content.startsWith(SESSION_NUDGE_PREFIX) ? content.slice(SESSION_NUDGE_PREFIX.length) : content;
 }
 
 function messagesToPayload(messages: SessionMessage[], system: string, tools: ToolDefinition[], cacheConfig?: CacheConfig) {
@@ -96,7 +107,9 @@ function messagesToPayload(messages: SessionMessage[], system: string, tools: To
     } else if (m.role === 'tool') {
       // Skip tool messages without results
     } else {
-      formatted.push({ role: m.role, content: m.content });
+      // Runtime nudges ("continue from where you left off") are stored with a
+      // marker so the chat UI can hide them; the model only needs the text.
+      formatted.push({ role: m.role, content: stripInternalPrefix(m.content) });
     }
   }
 
@@ -138,7 +151,7 @@ export async function generate(
     },
   };
 
-  const data = await _generateText(body, abortSignal);
+  const data = await _generateText(body, abortSignal, opts.onTextDelta);
 
   const toolCalls: ToolCall[] | undefined = data.toolCalls?.map(tc => ({
     id: tc.id,

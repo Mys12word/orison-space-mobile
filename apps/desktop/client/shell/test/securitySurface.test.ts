@@ -92,6 +92,7 @@ describe('preload security surface', () => {
       'renameProject',
       'resolveAgentConfirmation',
       'restoreAgentContinuation',
+      'retractAgentTurn',
       'runStorySync',
       'saveBase64Image',
       'saveModelConfig',

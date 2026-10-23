@@ -119,6 +119,13 @@ export type MessageRole = 'system' | 'user' | 'assistant' | 'tool';
 
 export type RetentionPriority = 'critical' | 'normal' | 'compressible';
 
+/**
+ * Marks a user-role message that the runtime injected itself (a nudge to keep
+ * going). The chat UI hides these; the provider strips the marker before the
+ * model sees the text.
+ */
+export const SESSION_NUDGE_PREFIX = '⟦nudge⟧ ';
+
 export interface SessionMessage {
   id: string;
   role: MessageRole;
@@ -161,6 +168,9 @@ export interface ConfirmationResolution {
 
 export type RuntimeEventPayload =
   | { type: 'assistant'; data: { id: string; content: string; toolCalls?: ToolCall[] } }
+  // Incremental prose while the model is still writing; `content` is a chunk,
+  // not the whole message. The final 'assistant' event replaces the bubble.
+  | { type: 'assistant-delta'; data: { id: string; content: string } }
   | { type: 'tool'; data: { id: string; results: ToolCallResult[] } }
   | { type: 'confirm_required'; data: PendingConfirmationState }
   | { type: 'done'; data: { status: WorkflowRunStatus } }

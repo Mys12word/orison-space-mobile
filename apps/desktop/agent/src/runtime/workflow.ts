@@ -173,6 +173,15 @@ const DEFAULT_ORISON_PROMPT = `You are Orison, an AI writing assistant embedded 
 - If the user only asked for a plot direction or outline, answering in chat is
   fine — but say clearly that nothing was saved yet, and offer to write it.
 
+## Act, don't narrate
+- A turn that only announces what you are about to do ("I will check the worldbuilding doc
+  first", "Let me read the project files", "我先看一下世界观设定") and then stops is a
+  failed turn: nothing was read, nothing was written. When a step needs a tool, call it in
+  the same turn — narration is never a substitute for the call.
+- End a turn with plain text only when (a) the requested work is finished and the files are
+  saved, or (b) you truly need a decision from the user. In case (b) ask one short, direct
+  question in the user's language.
+
 ## Guidelines
 - Respond in the same language the user writes in.
 - Use tools proactively to read project files before making changes.
@@ -847,7 +856,15 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions = {}): Wor
           systemPrompt: runConfig.systemPrompt,
           tools: runConfig.tools,
           maxSteps: 50,
-          generate: (msgs, sys, tls, abortSignal, cacheConfig) => generateImpl(msgs, sys, tls, abortSignal, { modelRef: session.modelRef }, cacheConfig),
+          generate: (msgs, sys, tls, abortSignal, cacheConfig) => {
+            // Stream prose to the UI while it is being written — a 3000-word
+            // chapter otherwise looks like a hung request for minutes.
+            const streamId = randomUUID();
+            return generateImpl(msgs, sys, tls, abortSignal, {
+              modelRef: session.modelRef,
+              onTextDelta: (text) => input.sendEvent({ type: 'assistant-delta', data: { id: streamId, content: text } }),
+            }, cacheConfig);
+          },
           onMessage: (msg) => {
             addMessage(input.sessionId, msg);
             if (msg.role === 'assistant') {

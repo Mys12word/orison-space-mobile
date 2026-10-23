@@ -44,6 +44,8 @@ export type AgentSessionSlice = {
   agentMessages: AgentMessage[];
   agentLoading: boolean;
   agentError: string | null;
+  /** Prose streamed so far for the assistant message currently being written. */
+  agentStreaming: { id: string; content: string } | null;
   sendAgentMessage: (content: string) => Promise<void>;
   cancelAgent: () => void;
   /** Withdraw the last user turn and return its text (null when unavailable). */
@@ -197,6 +199,7 @@ export const createAgentSessionSlice: StateCreator<Deps, [], [], AgentSessionSli
   agentMessages: [],
   agentLoading: false,
   agentError: null,
+  agentStreaming: null,
 
   pendingAttachments: [],
   addAttachment: (attachment) =>
@@ -271,8 +274,17 @@ export const createAgentSessionSlice: StateCreator<Deps, [], [], AgentSessionSli
     const { cleanup, promise } = streamAgentMessage(sid, messageContent, (event: AgentStreamEvent) => {
       if (!isCurrentScope()) return;
       switch (event.type) {
+        case 'assistant-delta':
+          set((s) => ({
+            agentStreaming: {
+              id: event.data.id,
+              content: (s.agentStreaming?.id === event.data.id ? s.agentStreaming.content : '') + event.data.content,
+            },
+          }));
+          break;
         case 'assistant':
           set((s) => ({
+            agentStreaming: null,
             agentMessages: [...s.agentMessages, {
               id: event.data.id,
               role: 'assistant',
@@ -435,7 +447,7 @@ export const createAgentSessionSlice: StateCreator<Deps, [], [], AgentSessionSli
             activeAbort.cleanup();
             activeAbort = null;
           }
-          set({ agentLoading: false });
+          set({ agentLoading: false, agentStreaming: null });
           // stream 结束后与后端对账，补偿可能因 IPC 时序丢失的消息
           void fetchAgentSession(sid, projectPath).then((session) => {
             if (!session || !isCurrentScope()) return;
@@ -450,7 +462,7 @@ export const createAgentSessionSlice: StateCreator<Deps, [], [], AgentSessionSli
             activeAbort.cleanup();
             activeAbort = null;
           }
-          set({ agentError: event.data.message, agentLoading: false });
+          set({ agentError: event.data.message, agentLoading: false, agentStreaming: null });
           break;
       }
     }, attachments);
@@ -515,6 +527,7 @@ export const createAgentSessionSlice: StateCreator<Deps, [], [], AgentSessionSli
       agentMessages: [],
       agentLoading: false,
       agentError: null,
+      agentStreaming: null,
       pendingToolConfirm: null,
       pendingDiffs: [],
       pendingAttachments: [],
@@ -546,6 +559,7 @@ export const createAgentSessionSlice: StateCreator<Deps, [], [], AgentSessionSli
       agentMessages: [],
       agentLoading: false,
       agentError: null,
+      agentStreaming: null,
       agentModelRef: null,
       pendingToolConfirm: null,
       pendingDiffs: [],

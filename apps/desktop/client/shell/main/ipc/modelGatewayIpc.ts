@@ -80,9 +80,13 @@ export function registerModelGatewayIpc() {
   });
 }
 
-export async function handleGenerateText(payload: GenerateTextPayload, signal?: AbortSignal): Promise<TextGenerationResponse> {
+export async function handleGenerateText(
+  payload: GenerateTextPayload,
+  signal?: AbortSignal,
+  extra?: { onTextDelta?: (text: string) => void },
+): Promise<TextGenerationResponse> {
   const resolved = resolveModel(payload.ref);
-  return generateText(resolved, payload.request, { signal });
+  return generateText(resolved, payload.request, { signal, onTextDelta: extra?.onTextDelta });
 }
 
 export async function handleGenerateImage(payload: GenerateImagePayload, signal?: AbortSignal): Promise<ImageGenerationResponse> {

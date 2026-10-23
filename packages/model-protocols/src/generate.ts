@@ -6,7 +6,7 @@ import type {
   TextGenerationRequest,
   TextGenerationResponse,
 } from '@orison/shared-contracts';
-import { generateText as aiGenerateText, jsonSchema, tool, APICallError } from 'ai';
+import { generateText as aiGenerateText, streamText as aiStreamText, jsonSchema, tool, APICallError } from 'ai';
 import { createOpenAI } from '@ai-sdk/openai';
 import { base64ToBlob, normalizeBaseUrl, postJson, postMultipart } from './http';
 import { normalizeImageResponse } from './imageNormalize';
@@ -57,6 +57,9 @@ const patchNullContentFetch: typeof globalThis.fetch = async (input, init) => {
 // ── Text generation (via Vercel AI SDK) ──
 
 const ANTHROPIC_VERSION = '2023-06-01';
+
+/** Abort a stream that stops producing chunks for this long. */
+const STREAM_IDLE_TIMEOUT_MS = 150_000;
 
 function mapFinishReason(raw: string | undefined): GenerationFinishReason | undefined {
   switch (raw) {
@@ -172,25 +175,89 @@ export async function generateText(
     return { role: m.role, content: m.content };
   });
 
+  const callOptions = {
+    model: provider,
+    system: systemParts.length ? systemParts.join('\n') : undefined,
+    messages,
+    temperature: request.temperature,
+    maxOutputTokens: request.maxTokens,
+    tools,
+    abortSignal: ctx?.signal,
+  };
+
   let result;
+  // streamText reports upstream failures through onError and then rejects with a
+  // generic "No output generated"; keep the real error so we can tell an
+  // unsupported stream:true (400) from a transient gateway failure.
+  let streamError: unknown;
+  let streamedChars = 0;
   try {
-    result = await aiGenerateText({
-      model: provider,
-      system: systemParts.length ? systemParts.join('\n') : undefined,
-      messages,
-      temperature: request.temperature,
-      maxOutputTokens: request.maxTokens,
-      tools,
-      abortSignal: ctx?.signal,
-    });
+    // Stream by default. A non-streaming request keeps the connection silent
+    // until the whole answer is generated, so Cloudflare-fronted relays hit
+    // their ~100s origin timeout and answer with HTTP 524. Streaming keeps
+    // bytes flowing and also lets long chapters finish.
+    const stream = aiStreamText({
+      ...(callOptions as object),
+      // A relay can accept the request and then go silent forever. Abort after
+      // 150s without a chunk (internal controller — the user's cancel signal is
+      // still forwarded separately) so the run fails with a readable reason.
+      timeout: { chunkMs: STREAM_IDLE_TIMEOUT_MS },
+      onError: ({ error }: { error: unknown }) => { streamError = error; },
+      // Forward prose as it arrives so the app can paint it live; without this
+      // a 3000-word chapter looks like a hung request for minutes.
+      onChunk: ({ chunk }: { chunk: { type: string; text?: string; delta?: string } }) => {
+        if (chunk.type !== 'text-delta') return;
+        const piece = chunk.text ?? chunk.delta ?? '';
+        if (!piece) return;
+        streamedChars += piece.length;
+        ctx?.onTextDelta?.(piece);
+      },
+    } as never);
+    const [text, toolCalls, finishReason, usage] = await Promise.all([
+      stream.text,
+      stream.toolCalls,
+      stream.finishReason,
+      stream.usage,
+    ]);
+    result = { text, toolCalls, finishReason, usage };
   } catch (err) {
-    // The AI SDK surfaces HTTP failures as AI_APICallError; normalize to the
-    // ProtocolHttpError contract every other path in this package throws.
-    if (APICallError.isInstance(err)) {
-      const status = err.statusCode ?? 500;
-      throw new ProtocolHttpError(err.message, status, err.responseBody?.slice(0, 500));
+    // A user-visible cancel is not a provider failure — keep it as an AbortError
+    // so the agent loop can tell "stopped by user" from "upstream broke".
+    const cause = streamError ?? (err as { cause?: unknown } | undefined)?.cause;
+    if (isAbortLike(err) || isAbortLike(cause)) {
+      // Only the caller's signal counts as a real cancel. An abort we did not
+      // trigger comes from the idle watchdog above.
+      if (ctx?.signal?.aborted) throw err instanceof Error ? err : new Error(String(err));
+      throw new Error(
+        streamedChars > 0
+          ? `上游在输出 ${streamedChars} 字后中断（${Math.round(STREAM_IDLE_TIMEOUT_MS / 1000)} 秒没有新内容），可以重试，或换个模型`
+          : `上游 ${Math.round(STREAM_IDLE_TIMEOUT_MS / 1000)} 秒没有任何输出（连接像是被中断了），可以重试，或换个模型`,
+      );
     }
-    throw err;
+    // No error from the stream itself: upstream answered with nothing usable
+    // (empty completion, or a reasoning-only reply). Surface it as an empty
+    // generation so the agent loop can nudge and continue, instead of failing
+    // the whole turn with an opaque "No output generated".
+    if (!streamError && isEmptyOutputError(err)) {
+      result = { text: '', toolCalls: undefined, finishReason: undefined, usage: undefined };
+    } else {
+      const primary = cause ?? err;
+      const apiErr = APICallError.isInstance(primary) ? primary : APICallError.isInstance(err) ? err : null;
+      const status = apiErr?.statusCode;
+      const streamUnsupported =
+        status === 400 || status === 404 || status === 405 || status === 501 || /stream/i.test(apiErr?.message ?? '');
+      if (!streamUnsupported) throw normalizeGenerateError(primary);
+      // Relay rejected stream:true — fall back to the one-shot call.
+      try {
+        result = await aiGenerateText(callOptions as never);
+      } catch (err2) {
+        if (isEmptyOutputError(err2)) {
+          result = { text: '', toolCalls: undefined, finishReason: undefined, usage: undefined };
+        } else {
+          throw normalizeGenerateError(err2);
+        }
+      }
+    }
   }
 
   const toolCalls = result.toolCalls?.length
@@ -434,4 +501,90 @@ async function buildImageResponse(model: ResolvedModel, raw: OpenAiImageResponse
     })),
   };
   return normalizeImageResponse(response);
+}
+
+/** Flatten the AI SDK retry wrapper so callers see the real failure reason. */
+function normalizeGenerateError(err: unknown): Error {
+  // generateText retries internally and throws RetryError('Failed after N attempts')
+  // whose message is useless on a phone where the cause is TLS/DNS/proxy.
+  const retry = err as { lastError?: unknown; errors?: unknown[] };
+  const last = retry?.lastError ?? (Array.isArray(retry?.errors) ? retry.errors[retry.errors.length - 1] : undefined);
+  const inner = APICallError.isInstance(last) ? last : APICallError.isInstance(err) ? err : last ?? err;
+
+  if (APICallError.isInstance(inner)) {
+    const status = inner.statusCode;
+    const causeCode = extractNetworkCode(inner);
+    const parts = [inner.message || 'model request failed'];
+    if (status) parts.push(`HTTP ${status}`);
+    if (causeCode) parts.push(causeCode);
+    const bodyText = (inner.responseBody ?? '').replace(/\s+/g, ' ').trim().slice(0, 200);
+    if (bodyText) parts.push(bodyText);
+    if (!inner.message && !status && !causeCode) parts.push(inner.name || 'unknown error');
+    const hint = networkHint(causeCode);
+    if (hint) parts.push(hint);
+    return new ProtocolHttpError(parts.join(' · '), status ?? 500, inner.responseBody?.slice(0, 500));
+  }
+
+  if (inner instanceof Error) {
+    const causeCode = extractNetworkCode(inner);
+    if (causeCode) {
+      const hint = networkHint(causeCode);
+      return new ProtocolHttpError([inner.message || 'model request failed', causeCode, hint].filter(Boolean).join(' · '), 500);
+    }
+    // A bare "fetch failed" / empty message hides the real reason; append the
+    // deepest cause message we can find.
+    const causeMessage = deepestCauseMessage(inner);
+    const base = inner.message?.trim() || inner.name || 'model request failed';
+    const parts = [base];
+    if (causeMessage && causeMessage !== inner.message) parts.push(causeMessage.slice(0, 200));
+    if (/no output generated/i.test(base)) {
+      parts.push('上游没有返回任何内容（中转断流或模型只输出思考），可以重试或换个模型');
+    }
+    return new Error(parts.join(' · '));
+  }
+  return new Error(String(inner));
+}
+
+function deepestCauseMessage(err: unknown): string | undefined {
+  let cur: any = err;
+  let message: string | undefined;
+  for (let depth = 0; depth < 4 && cur; depth++) {
+    const next = cur.cause;
+    if (next instanceof Error && next.message) message = next.message;
+    cur = next;
+  }
+  return message;
+}
+
+/** AI SDK throws this when the stream produced no text and no tool call. */
+function isEmptyOutputError(err: unknown): boolean {
+  const e = err as { name?: string; message?: string } | undefined;
+  return !!e && (e.name === 'AI_NoOutputGeneratedError' || /no output generated/i.test(e.message ?? ''));
+}
+
+function isAbortLike(err: unknown): boolean {
+  const e = err as { name?: string } | undefined;
+  return !!e && (e.name === 'AbortError' || e.name === 'TimeoutError');
+}
+
+function extractNetworkCode(err: unknown): string | undefined {
+  let cur: any = err;
+  for (let depth = 0; depth < 4 && cur; depth++) {
+    const code = cur.code ?? cur.cause?.code;
+    if (typeof code === 'string' && code.length > 0) return code;
+    cur = cur.cause;
+  }
+  return undefined;
+}
+
+function networkHint(code?: string): string | undefined {
+  if (!code) return undefined;
+  if (/CERT|SSL|TLS|UNABLE_TO_VERIFY|SELF_SIGNED|EPROTO/i.test(code)) {
+    return 'TLS 证书校验失败：检查手机时间是否正确';
+  }
+  if (/ENOTFOUND|EAI_AGAIN/i.test(code)) return 'DNS 解析失败：检查网络或代理';
+  if (/ECONNRESET|ETIMEDOUT|ECONNREFUSED|UND_ERR_CONNECT_TIMEOUT|UND_ERR_SOCKET/i.test(code)) {
+    return '连接被中断：若开了代理/VPN，试试全局模式（手机端 Node 不读系统代理）';
+  }
+  return undefined;
 }

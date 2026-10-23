@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { SESSION_NUDGE_PREFIX } from '../types';
 import type { ChildStreamEvent, SessionMessage, SkillExecutorRef, ToolCall, ToolContext, ToolDefinition } from '../types';
 import type { CacheConfig, ContextState } from '../context/contextManager';
 import type { SummarizationGenerateFn } from '../context/summarizer';
@@ -45,10 +46,24 @@ export async function runLoop(opts: LoopOptions): Promise<SessionMessage[]> {
   let steps = 0;
   let contextState = opts.contextState ?? createDefaultContextState();
   let consecutiveLengthHits = 0;
+  // Nudges are runtime scaffolding, not something the user typed: the marker
+  // lets the chat UI hide them (the provider strips it before sending).
+  const nudge = (content: string): SessionMessage => ({
+    id: randomUUID(),
+    role: 'user',
+    content: `${SESSION_NUDGE_PREFIX}${content}`,
+    createdAt: Date.now(),
+  });
   // A relay can drop a stream and hand back an empty completion; silently
   // ending there looks like the agent "stopped halfway through".
   let consecutiveEmptyResponses = 0;
   const MAX_EMPTY_RESPONSE_RETRIES = 2;
+  // Some models end a step by *describing* the next action ("I will check the
+  // worldbuilding doc first") instead of calling the tool — or the relay loses
+  // the tool-call delta but still reports finish_reason=tool_calls. Either way
+  // the run would end with nothing done, so nudge the model to act.
+  let consecutiveIntentOnly = 0;
+  const MAX_INTENT_ONLY_RETRIES = 2;
   let consecutiveToolErrors = 0;
   const initialActiveSkill = await resolveLatestActiveSkillMetadata(opts, readLatestActiveSkillMetadata(opts.messages));
   let activeSkillAllowedTools: string[] | undefined = initialActiveSkill?.allowedTools;
@@ -135,12 +150,7 @@ export async function runLoop(opts: LoopOptions): Promise<SessionMessage[]> {
       if (response.finishReason === 'length') {
         consecutiveLengthHits++;
         if (consecutiveLengthHits >= 3) break;
-        const contMsg: SessionMessage = {
-          id: randomUUID(),
-          role: 'user',
-          content: 'Continue from where you left off. Execute the next step using the appropriate tool.',
-          createdAt: Date.now(),
-        };
+        const contMsg = nudge('Continue from where you left off. Execute the next step using the appropriate tool.');
         result.push(contMsg);
         onMessage?.(contMsg);
         continue;
@@ -151,20 +161,15 @@ export async function runLoop(opts: LoopOptions): Promise<SessionMessage[]> {
       if (!String(response.content ?? '').trim()) {
         consecutiveEmptyResponses++;
         if (consecutiveEmptyResponses <= MAX_EMPTY_RESPONSE_RETRIES) {
-          const nudge: SessionMessage = {
-            id: randomUUID(),
-            role: 'user',
-            content: 'Your previous turn came back empty. Continue the task from exactly where you left off.',
-            createdAt: Date.now(),
-          };
-          result.push(nudge);
-          onMessage?.(nudge);
+          const emptyNudge = nudge('Your previous turn came back empty. Continue the task from exactly where you left off.');
+          result.push(emptyNudge);
+          onMessage?.(emptyNudge);
           continue;
         }
         const note: SessionMessage = {
           id: randomUUID(),
           role: 'assistant',
-          content: '（上游模型连续返回空响应，本次已停止。可以再发一条消息继续。）',
+          content: '（上游连续返回空内容：可能是中转断流，或模型只输出思考而没有正文。可以先重试一次，或换个模型再试。）',
           createdAt: Date.now(),
         };
         result.push(note);
@@ -172,10 +177,46 @@ export async function runLoop(opts: LoopOptions): Promise<SessionMessage[]> {
         logger.warn({ finishReason: response.finishReason }, 'model returned empty responses repeatedly');
         break;
       }
+
+      // No tool calls but the reply reads like a plan rather than an answer
+      // (or upstream claimed tool use that never arrived). One bounded nudge
+      // per occurrence so a normal chat reply is never delayed.
+      const droppedToolCalls = response.finishReason === 'tool_use';
+      if (droppedToolCalls || looksLikeIntentOnly(response.content)) {
+        consecutiveIntentOnly++;
+        if (consecutiveIntentOnly <= MAX_INTENT_ONLY_RETRIES) {
+          logger.warn(
+            { finishReason: response.finishReason, droppedToolCalls, snippet: String(response.content ?? '').slice(0, 200) },
+            'model described its next step without calling a tool — nudging',
+          );
+          const intentNudge = nudge(
+            droppedToolCalls
+              ? 'Your previous reply announced a tool call, but no call reached the runtime (the tool-call block was lost in transit). Repeat it now: actually call the tool with real arguments and continue the task.'
+              : 'Your previous reply only described what you were about to do — no tool was called, so nothing actually happened. Do it now: call the tool with real arguments and continue the task. If the work is already finished, reply with the final result instead of a plan.',
+          );
+          result.push(intentNudge);
+          onMessage?.(intentNudge);
+          continue;
+        }
+        logger.warn(
+          { finishReason: response.finishReason, attempts: consecutiveIntentOnly },
+          'model kept narrating without acting; ending run',
+        );
+        // Make the stall visible instead of ending on a plan-only reply.
+        const note: SessionMessage = {
+          id: randomUUID(),
+          role: 'assistant',
+          content: '（模型只说明了计划，没有真正执行工具，本次已停止。可以再发一条消息继续。）',
+          createdAt: Date.now(),
+        };
+        result.push(note);
+        onMessage?.(note);
+      }
       break;
     }
     consecutiveLengthHits = 0;
     consecutiveEmptyResponses = 0;
+    consecutiveIntentOnly = 0;
 
     // Execute tool calls in parallel
     const ctx: ToolContext = {
@@ -376,6 +417,31 @@ function throwIfAborted(abort: AbortSignal): void {
       ? abort.reason
       : new DOMException('Aborted', 'AbortError');
   }
+}
+
+/**
+ * Heuristic for an "announcement-only" turn: the model writes one to three short
+ * sentences about what it is about to do ("I should look at the docs first",
+ * "我先看一下世界观设定") and ends the turn without calling any tool. Real
+ * answers, questions back to the user and completion reports must not match —
+ * a false positive only costs one extra round-trip, a false negative leaves the
+ * user staring at a stopped agent.
+ */
+function looksLikeIntentOnly(content: unknown): boolean {
+  const text = String(content ?? '').trim();
+  if (!text || text.length > 400) return false;
+  if (/[?？]\s*$/.test(text)) return false;
+  if (/已(?:经)?(?:保存|写入|写好|完成)|保存到|写入到|\bsaved to\b|\bwritten to\b/i.test(text)) return false;
+  const sentences = text.split(/[.!?。！？\n]+/).map(part => part.trim()).filter(Boolean);
+  if (sentences.length === 0 || sentences.length > 3) return false;
+  const head = sentences[0].replace(/^[*`"'\s]+|[*`"'\s]+$/g, '');
+  if (!head) return false;
+  const action = /\b(?:check|look|read|open|search|review|inspect|examine|explore|scan|list|start|begin|write|save|update|fetch|load|gather|see)\b/i.test(head);
+  if (!action) return false;
+  const announcing = /^(?:let me|let us)\b/i.test(head)
+    || /\b(?:i|we)\b[^.]*\b(?:will|'ll|should|need to|am going to|'m going to|must|have to)\b/i.test(head)
+    || /^(?:让我|我先|我会先|我这就|接下来我|现在我去|我准备|我马上|我需要先|先看|先读|先查|先去)/.test(head);
+  return announcing;
 }
 
 /**

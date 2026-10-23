@@ -3,6 +3,8 @@ import git from 'isomorphic-git';
 import fs from 'node:fs';
 import { assertSafePath } from './pathGuard';
 import { getLogger } from '../logger';
+
+const logger = getLogger();
 import type { GitCommitEntry, GitFileDiff } from '@orison/shared-contracts';
 
 async function isGitRepo(dir: string): Promise<boolean> {
@@ -141,12 +143,7 @@ async function initRepo(dir: string): Promise<{ initialized: boolean }> {
     return { initialized: false };
   }
   await git.init({ fs, dir, defaultBranch: 'main' });
-  const matrix = await git.statusMatrix({ fs, dir });
-  for (const [filepath, , workdir] of matrix) {
-    if (workdir !== 1) {
-      await git.add({ fs, dir, filepath });
-    }
-  }
+  await stageAll(dir);
   await git.commit({
     fs,
     dir,
@@ -157,24 +154,70 @@ async function initRepo(dir: string): Promise<{ initialized: boolean }> {
   return { initialized: true };
 }
 
+const COMMIT_AUTHOR = { name: 'Orison', email: 'user@orison.local' } as const;
+
+/** Files that differ from HEAD in any way (added / modified / deleted / staged). */
+async function dirtyEntries(dir: string): Promise<[string, number, number, number][]> {
+  const matrix = await git.statusMatrix({ fs, dir });
+  return matrix.filter(([, head, workdir, stage]) => head !== 1 || workdir !== 1 || stage !== 1);
+}
+
+/**
+ * Stage every pending change. Two isomorphic-git quirks matter here:
+ *   • add() throws NotFoundError for a path deleted on disk — deletions must go
+ *     through remove(), otherwise one deleted file aborts the whole snapshot
+ *     (which is exactly how a save ends up "incomplete" with N pending changes);
+ *   • a tracked file that later matched a .gitignore rule needs force:true,
+ *     otherwise add() silently skips it and it stays pending forever.
+ * Failures are collected per file so one stubborn path can't sink the snapshot.
+ */
+async function stageAll(dir: string): Promise<{ staged: number; failed: string[] }> {
+  const failed: string[] = [];
+  let staged = 0;
+  // NOTE: isomorphic-git caches the parsed index in-process, so a statusMatrix
+  // taken right after these adds still reports the old state. Callers must not
+  // use it to verify — commitSnapshot re-reads after the commit refreshes it.
+  for (const [filepath, head, workdir] of await dirtyEntries(dir)) {
+    try {
+      if (workdir === 0) {
+        if (head === 0) continue;
+        await git.remove({ fs, dir, filepath });
+      } else {
+        await git.add({ fs, dir, filepath, force: head === 1 });
+      }
+      staged += 1;
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (!failed.includes(filepath)) failed.push(filepath);
+      logger.debug?.({ filepath, msg }, 'git stage failed');
+    }
+  }
+  return { staged, failed };
+}
+
+/** Commit the staged tree, then fold in anything written while we were committing. */
+async function commitSnapshot(dir: string, message: string): Promise<string> {
+  let oid = await git.commit({ fs, dir, message, author: COMMIT_AUTHOR });
+  // The editor/agent may keep writing while the snapshot runs (or a file could
+  // not be staged on the first pass); after a commit the in-process index cache
+  // is fresh again, so absorb any leftovers with a second commit.
+  for (let round = 0; round < 2; round += 1) {
+    if ((await dirtyEntries(dir)).length === 0) break;
+    const { staged } = await stageAll(dir);
+    if (staged === 0) break;
+    oid = await git.commit({ fs, dir, message, author: COMMIT_AUTHOR });
+  }
+  return oid;
+}
+
 async function createNode(dir: string, message: string, tag?: string): Promise<{ oid: string }> {
   // Snapshotting a project that was never initialized must not fail with
   // "Could not find git root for /" — create the repo on the spot so the first
   // snapshot doubles as the starting point of the timeline.
   await ensureRepo(dir);
   const root = await getGitRoot(dir);
-  const matrix = await git.statusMatrix({ fs, dir: root });
-  for (const [filepath, , workdir] of matrix) {
-    if (workdir !== 1) {
-      await git.add({ fs, dir: root, filepath });
-    }
-  }
-  const oid = await git.commit({
-    fs,
-    dir: root,
-    message,
-    author: { name: 'Orison', email: 'user@orison.local' },
-  });
+  await stageAll(root);
+  const oid = await commitSnapshot(root, message);
   if (tag) {
     await git.tag({ fs, dir: root, ref: tag, object: oid });
   }
@@ -233,17 +276,10 @@ async function restoreVersion(dir: string, oid: string, message: string): Promis
 
 async function statusCount(dir: string): Promise<number> {
   const root = await getGitRoot(dir);
-  const matrix = await git.statusMatrix({ fs, dir: root });
-  let count = 0;
-  for (const [, head, workdir, stage] of matrix) {
-    if (head !== 1 || workdir !== 1 || stage !== 1) count++;
-  }
-  return count;
+  return (await dirtyEntries(root)).length;
 }
 
 export function registerGitIpc() {
-  const logger = getLogger();
-
   ipcMain.handle('git:is-repo', async (_e, dir: string) => {
     try {
       assertSafePath(dir);

@@ -11,13 +11,14 @@ type PanelView = 'chat' | 'history' | 'settings';
 
 export function AgentPanel() {
   const {
-    agentMessages, agentLoading, agentError,
+    agentMessages, agentLoading, agentError, agentStreaming,
     newAgentSession, loadAgentSessions, loadAgentSkills,
     resolvedLocale,
   } = useAppStore(useShallow((s) => ({
     agentMessages: s.agentMessages,
     agentLoading: s.agentLoading,
     agentError: s.agentError,
+    agentStreaming: s.agentStreaming,
     newAgentSession: s.newAgentSession,
     loadAgentSessions: s.loadAgentSessions,
     loadAgentSkills: s.loadAgentSkills,
@@ -77,7 +78,7 @@ export function AgentPanel() {
         <AgentSettings onClose={() => setView('chat')} />
       ) : (
         <>
-          <AgentMessages messages={agentMessages} loading={agentLoading} error={agentError} />
+          <AgentMessages messages={agentMessages} loading={agentLoading} error={agentError} streaming={agentStreaming?.content ?? null} />
           <AgentInput />
         </>
       )}

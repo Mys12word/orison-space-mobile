@@ -34,8 +34,8 @@ export function registerAgentIpc(getWin: () => BrowserWindow | null) {
   }
   registered = true;
 
-  const generateTextImpl: GenerateTextFn = async (body, abort) => {
-    const result = await handleGenerateText(body as any, abort);
+  const generateTextImpl: GenerateTextFn = async (body, abort, onTextDelta) => {
+    const result = await handleGenerateText(body as any, abort, { onTextDelta });
     return result as any;
   };
   setGenerateTextFn(generateTextImpl);
